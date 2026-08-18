@@ -1,0 +1,9 @@
+name: agriseq_vcf_env
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python>=3.8
+  - bcftools>=1.15
+  - htslib>=1.15
