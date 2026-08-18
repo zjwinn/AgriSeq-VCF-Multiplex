@@ -1,6 +1,6 @@
 # AgriSeq Variant Merging Pipeline
 
-The AgriSeq Variant Merging Pipeline standardizes, aggregates, and reheaders targeted genotyping Variant Call Format (VCF) files produced by AgriSeq sequencing platforms. The pipeline is designed for polyploid species with large genome assemblies (e.g., *Triticum aestivum*) and handles coordinate indexing via `.csi` and hierarchical batch merging to operate within POSIX file descriptor limits (`ulimit`).
+The AgriSeq Variant Merging Pipeline standardizes, aggregates, and reheaders targeted genotyping Variant Call Format (VCF) files produced by AgriSeq sequencing platforms.
 
 ---
 
