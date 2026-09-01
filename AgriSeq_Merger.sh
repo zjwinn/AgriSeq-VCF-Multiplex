@@ -368,8 +368,11 @@ find "$TEMP_UNZIP_DIR" -type f -name "*.vcf.gz" | while read -r vcf_file; do
     # Create a globally unique base name by combining the zip name and the vcf name
     unique_base="${parent_dir}_${vcf_base}"
     
+    # Determine the directory where this merger script resides
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    
     # Initialize the python command as a string using the globally unique output name
-    PY_CMD="python rename_vcf_markers.py --input \"$vcf_file\" --output \"$FINAL_VCF_DIR/$unique_base\" --ref-index \"$REF_INDEX\" --ref-contigs \"$CONTIGS\""
+    PY_CMD="python \"$SCRIPT_DIR/rename_vcf_markers.py\" --input \"$vcf_file\" --output \"$FINAL_VCF_DIR/$unique_base\" --ref-index \"$REF_INDEX\" --ref-contigs \"$CONTIGS\""
     
     # Check if a non-native prefix was provided
     if [ -n "$NON_NATIVE_PREFIX" ]; then

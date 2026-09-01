@@ -1,32 +1,52 @@
-# AgriSeq Variant Merging Pipeline
+# AgriSeq Variant Merging, Subsetting, and Genomic Sorting Pipeline
 
-The AgriSeq Variant Merging Pipeline standardizes, aggregates, and reheaders targeted genotyping Variant Call Format (VCF) files produced by AgriSeq sequencing platforms. The pipeline is designed for polyploid species with large genome assemblies (e.g., *Triticum aestivum*) and handles coordinate indexing via `.csi` and hierarchical batch merging to operate within POSIX file descriptor limits (`ulimit`).
+A suite of shell and Python scripts for standardizing, merging, subsetting, and sorting targeted genotyping Variant Call Format (VCF) files produced by AgriSeq sequencing platforms.
 
 ---
 
-## Features
+## Key Features
 
-- **Marker ID Standardization:** Assigns uniform IDs to unnamed variant records (`ID = .` and `INFO/OID = .`) using reference prefix, chromosome, and zero-padded 9-digit physical positions (e.g., `CHS21_1A004783927`). Supports custom prefixes for non-native contigs.
-- **Hierarchical Batch Merging:** Merges individual single-sample VCFs in blocks (default: 100 files) using `bcftools merge` before merging intermediate outputs into the final dataset.
-- **Multiallelic Variant Handling:** Consolidates variants at identical physical coordinates into multiallelic VCF records via `bcftools merge`.
-- **Sample Reheadering:** Intersects sequencing sample IDs with a two-column lookup file to replace raw IDs with line or cultivar designations using `bcftools reheader`.
+### 1. Merging & Standardization (`AgriSeq_Merger.sh`)
+- **Marker ID Standardization:** Assigns uniform IDs to unnamed variant records (`ID = .` and `INFO/OID = .`) using a user-specified reference prefix, chromosome contig, and zero-padded 9-digit physical positions (e.g., `CHS21_1A004783927`). Supports custom prefixes for non-native/alien contigs.
+- **Hierarchical Batch Merging:** Merges hundreds or thousands of individual single-sample VCFs in blocks (default: 100 files) using `bcftools merge` before combining intermediate outputs into the master dataset, avoiding OS open-file limits.
+- **Multiallelic Variant Handling:** Accurately merges variants at identical physical coordinates into multiallelic VCF records.
+- **Sample Reheadering:** Intersects sequencing sample IDs with a two-column lookup file (`example_sample_map.txt`) to replace raw instrument barcodes with line/cultivar designations using `bcftools reheader`.
 - **Marker ID Deduplication:** Optional `-d` flag removes concatenated redundant marker IDs from merged loci, retaining the primary identifier.
-- **Automated Directory Cleanup:** Uses `mktemp` for temporary workspace allocation and a POSIX `EXIT` trap for directory removal upon completion or error.
+
+### 2. Non-Destructive Subsetting & Sorting (`AgriSeq_Subset_and_Sort.sh`)
+- **Target Coordinate Subsetting (`-t, --targets`):** Subsets specific target loci using a 3-column manifest (`#CHROM`, `POS`, `ID`) or 1-column marker ID list (e.g., `example_target_manifest.txt`), eliminating off-target amplicon artifacts.
+- **Line Subsetting (`-l, --lines`):** Subsets specific lines/cultivars using a single-column text file (e.g., `example_lines_list.txt`).
+- **Complete Metadata & Allele Preservation:** Preserves 100% of reference genome `REF` alleles, all true `ALT` alleles, contig designations, and deep genotype metrics.
+- **TASSEL GUI Compatibility:** Sorts records in strict canonical chromosome order (`Chr1A`..`Chr7D` first, then non-native/alien scaffolds alphabetically) and physical coordinate order, resolving "Position out of order" import exceptions in the TASSEL GUI.
+- **Dual Indexing:** Automatically generates both CSI (`.csi`) and Tabix (`.tbi`) indexes.
 
 ---
 
-## Repository Contents
+## Repository Structure
 
-- `AgriSeq_Merger.sh`: Shell script controlling extraction, marker renaming, indexing, batch merging, and reheadering.
-- `rename_vcf_markers.py`: Python script for standardized marker ID generation and header modification.
-- `agriseq_vcf_env.yml`: Conda environment specification (`bcftools`, `htslib`, `python`).
-- `run_example.sh`: Example bash execution wrapper with parameters.
-- `example_ceres_submission.slurm`: SLURM batch job script for the USDA ARS SCINet Ceres cluster.
-- `.gitignore`: Rules for excluding raw data archives, sample mapping tables, intermediate outputs, and logs.
+```text
+AgriSeq-VCF-Multiplex/
+├── AgriSeq_Merger.sh                       # Core merging and standardization pipeline
+├── AgriSeq_Subset_and_Sort.sh              # Core manifest subsetting and sorting pipeline
+├── rename_vcf_markers.py                   # Python helper for variant standardization
+├── agriseq_vcf_env.yml                     # Conda environment definition
+├── example_sample_map.txt                  # Example 2-column sample reheadering map
+├── example_target_manifest.txt             # Example 3-column target manifest (#CHROM POS ID)
+├── example_lines_list.txt                  # Example 1-column lines/taxa subset list
+├── Non_HPC_Submission_Samples/             # Non-HPC execution wrappers
+│   ├── run_example.sh                      # Local wrapper for variant merging
+│   └── run_subset_example.sh               # Local wrapper for subsetting/sorting
+├── SCINet_Submission_Samples/              # HPC SLURM submission scripts
+│   ├── example_ceres_submission.slurm      # SLURM script for merging on Ceres
+│   └── example_ceres_subset_submission.slurm # SLURM script for subsetting on Ceres
+├── README.md                               # Pipeline documentation
+├── LICENSE                                 # License file
+└── .gitignore                              # Git ignore rules
+```
 
 ---
 
-## Environment Configuration
+## Environment Setup
 
 The pipeline requires `bcftools` (>=1.15), `htslib` (>=1.15), and `python` (>=3.8).
 
@@ -44,12 +64,6 @@ conda env create -f agriseq_vcf_env.yml
 conda activate agriseq_vcf_env
 ```
 
-To update dependencies after modifying `agriseq_vcf_env.yml`:
-
-```bash
-conda env update -f agriseq_vcf_env.yml --prune
-```
-
 ### 2. Manual Environment Creation (Alternative)
 
 ```bash
@@ -57,130 +71,98 @@ conda create -n agriseq_vcf_env -c bioconda -c conda-forge bcftools htslib pytho
 conda activate agriseq_vcf_env
 ```
 
-### 3. Verify Executables
-
-```bash
-which bcftools bgzip python
-bcftools --version
-```
-
 ---
 
-## SLURM Execution on SCINet Ceres
+## Example File Formats
 
-SLURM compute nodes run non-interactive subshells where Conda initialization functions are not loaded by default. Conda must be sourced from the user installation before environment activation.
+### 1. Target Manifest (`example_target_manifest.txt`)
+A tab-delimited file with three columns: `#CHROM`, `POS`, and `ID`.
 
-### Environment Activation in Batch Scripts
-
-```bash
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate agriseq_vcf_env
+```text
+#CHROM	POS	ID
+Chr1A	1169383	CHS21_1A001169383
+Chr1A	4783927	CHS21_1A004783927
+Chr1B	1237446	CHS21_1B001237446
+Chr1D	45625	CHS21_1D000045625
+TEL10_7E739933655	255	TEL10_7E739933655
 ```
 
-### Example SLURM Script (`example_ceres_submission.slurm`)
+### 2. Sample Reheadering Map (`example_sample_map.txt`)
+A two-column tab-delimited file mapping raw sequencing sample names to line/cultivar designations.
 
-```bash
-#!/bin/bash
-#SBATCH --job-name=AgriSeq_Merger
-#SBATCH --output=agriseq_merge_%j.out
-#SBATCH --error=agriseq_merge_%j.err
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
-#SBATCH --time=04:00:00
-#SBATCH --partition=medium
-#SBATCH --account=breeding_hwwgru
-#SBATCH --mail-type=BEGIN,END,FAIL
-#SBATCH --mail-user=your.name@usda.gov
-
-echo "Job started on $(hostname) at $(date)"
-
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate agriseq_vcf_env
-
-ZIP_DIR="NAG_Zip_Files"
-REF_INDEX="CHS21_OT"
-CONTIGS="Chr1A,Chr1B,Chr1D,Chr2A,Chr2B,Chr2D,Chr3A,Chr3B,Chr3D,Chr4A,Chr4B,Chr4D,Chr5A,Chr5B,Chr5D,Chr6A,Chr6B,Chr6D,Chr7A,Chr7B,Chr7D"
-OUTPUT_VCF="USDA_AgriSeq_2025_2026.vcf.gz"
-MAP_FILE="KSM2026-GYT_Sample_Names.txt"
-BATCH_SIZE=100
-NON_NATIVE_PREFIX="OT"
-DEDUP_FLAG="-d"
-
-./AgriSeq_Merger.sh \
-  --zip-dir "$ZIP_DIR" \
-  --ref-index "$REF_INDEX" \
-  --contigs "$CONTIGS" \
-  --output "$OUTPUT_VCF" \
-  --batch-size "$BATCH_SIZE" \
-  --map-file "$MAP_FILE" \
-  --non-native "$NON_NATIVE_PREFIX" \
-  $DEDUP_FLAG
-
-echo "Job completed at $(date)"
+```text
+Sample_A01_Plate1	LINE_001
+Sample_B01_Plate1	LINE_002
+Sample_C01_Plate1	LINE_003
 ```
 
-### Ceres Submission and Queue Management
+### 3. Lines List (`example_lines_list.txt`)
+A single-column text file of line/cultivar names to subset.
 
-```bash
-sbatch example_ceres_submission.slurm
-squeue -u $USER
+```text
+LINE_001
+LINE_002
+LINE_003
 ```
 
 ---
 
 ## Command-Line Usage
 
-### Direct Invocation
+### Stage 1: Merging & Demultiplexing (`AgriSeq_Merger.sh`)
 
 ```bash
 ./AgriSeq_Merger.sh \
-  -z "NAG_Zip_Files" \
-  -r "CHS21_OT" \
-  -c "Chr1A,Chr1B,Chr1D,Chr2A,Chr2B,Chr2D,Chr3A,Chr3B,Chr3D,Chr4A,Chr4B,Chr4D,Chr5A,Chr5B,Chr5D,Chr6A,Chr6B,Chr6D,Chr7A,Chr7B,Chr7D" \
-  -o "USDA_AgriSeq_2025_2026.vcf.gz" \
-  -b 100 \
-  -m "KSM2026-GYT_Sample_Names.txt" \
-  -p "OT" \
+  --zip-dir "raw_zip_files" \
+  --ref-index "CHS21_OT" \
+  --contigs "Chr1A,Chr1B,Chr1D,Chr2A,Chr2B,Chr2D,Chr3A,Chr3B,Chr3D,Chr4A,Chr4B,Chr4D,Chr5A,Chr5B,Chr5D,Chr6A,Chr6B,Chr6D,Chr7A,Chr7B,Chr7D" \
+  --output "Merged_Dataset.vcf.gz" \
+  --batch-size 100 \
+  --map-file "example_sample_map.txt" \
+  --non-native "OT" \
   -d
 ```
 
-### Options
-
-- `-z, --zip-dir` *(Required)*: Directory containing input `.zip` archives of single-sample VCF files.
-- `-r, --ref-index` *(Required)*: Reference index string for marker nomenclature prefix (e.g., `CHS21` or `CHS21_OT`).
-- `-c, --contigs` *(Required)*: Comma-separated list of target chromosomes/contigs matching the reference genome.
-- `-o, --output` *(Required)*: Path for final merged VCF (`.vcf.gz`).
-- `-b, --batch-size` *(Optional, default: 100)*: Integer count of VCF files merged per intermediate batch.
-- `-m, --map-file` *(Optional)*: Two-column whitespace-delimited file mapping sequencing IDs to line names.
-- `-p, --non-native` *(Optional)*: Prefix string for non-reference contigs.
-- `-d, --deduplicate-ids` *(Optional)*: Strips concatenated semicolon-delimited variant IDs, retaining the first ID.
-- `-h, --help`: Prints usage documentation and exits.
+#### Options:
+- `-z, --zip-dir` *(Required)*: Directory containing individual `.zip` archives delivered by the sequencing provider.
+- `-r, --ref-index` *(Required)*: Reference prefix to assign to standardized marker IDs (e.g., `CHS21_OT`).
+- `-c, --contigs` *(Required)*: Comma-separated list of standard reference contigs.
+- `-o, --output` *(Required)*: Output file path for the master merged VCF (`.vcf.gz`).
+- `-b, --batch-size` *(Optional, default: 100)*: Number of VCFs to merge simultaneously per batch.
+- `-m, --map-file` *(Optional)*: Two-column sample ID to line name lookup file for reheadering.
+- `-p, --non-native` *(Optional)*: Prefix string to insert for non-reference contigs.
+- `-d, --dedup` *(Optional)*: Retains only the primary marker ID at multiallelic sites instead of concatenated strings.
 
 ---
 
-## Pipeline Execution Steps
+### Stage 2: Subsetting & Canonical Sorting (`AgriSeq_Subset_and_Sort.sh`)
 
-1. **Extraction:** Allocates temporary directory via `mktemp -d` and unpacks `.zip` archives into separate subdirectories.
-2. **Standardization:** Runs `rename_vcf_markers.py` on each `.vcf.gz` to convert missing variant IDs (`ID=.`) into coordinate-based names.
-3. **Compression & Indexing:** Compresses standardized VCFs with `bgzip` and indexes with `bcftools index -c` (CSI indexing required for chromosome coordinates > 512 Mbp).
-4. **Hierarchical Merging:** Segregates indexed files into batches of size `-b`, executes `bcftools merge -l` per batch, then merges intermediate outputs into the final VCF.
-5. **Deduplication (Optional):** If `-d` is passed, truncates semicolon-concatenated marker IDs to the first identifier.
-6. **Reheadering (Optional):** If `-m` is provided, filters the mapping file against sample IDs in the VCF and reheaders the file using `bcftools reheader`.
-7. **Cleanup:** Removes temporary files via shell `EXIT` trap.
+```bash
+./AgriSeq_Subset_and_Sort.sh \
+  --input "Merged_Dataset.vcf.gz" \
+  --output "Subset_Filtered_Sorted.vcf.gz" \
+  --targets "example_target_manifest.txt" \
+  --lines "example_lines_list.txt" \
+  --memory "16g"
+```
+
+#### Options:
+- `-i, --input` *(Required)*: Path to input VCF file.
+- `-o, --output` *(Required)*: Path for final sorted output VCF (`.vcf.gz`).
+- `-t, --targets` *(Optional)*: 3-column target manifest (`#CHROM POS ID`) or 1-column marker ID list.
+- `-l, --lines` *(Optional)*: Single-column text file of sample line names to subset.
+- `-m, --memory` *(Optional, default: 16g)*: Memory buffer limit for bcftools sorting.
 
 ---
 
-## Input File Specifications
+## SLURM Execution on SCINet Ceres
 
-### Sample Mapping File (`-m, --map-file`)
+Example SLURM job submission scripts are provided in `SCINet_Submission_Samples/`:
 
-Two-column whitespace-delimited text file (no header row):
+```bash
+# Submit variant merging job
+sbatch SCINet_Submission_Samples/example_ceres_submission.slurm
 
-```text
-23786    BOB_DOLE
-21427    ZENDA
-56553    KS_PROVIDENCE
-30137    SHOWDOWN
+# Submit subsetting & sorting job
+sbatch SCINet_Submission_Samples/example_ceres_subset_submission.slurm
 ```

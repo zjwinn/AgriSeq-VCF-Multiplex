@@ -7,3 +7,7 @@ dependencies:
   - python>=3.8
   - bcftools>=1.15
   - htslib>=1.15
+  - tassel>=5.2.80
+  - openjdk>=8.0
+  - perl>=5.26
+

@@ -1,6 +1,20 @@
+# Local working directory ignored entirely
+Local_Work/
+local_work/
+Local_Work/**
+local_work/**
+
 # Raw sequencing archives and large zip files
 NAG_Zip_Files/
 *.zip
+**/*.zip
+
+# Excel and spreadsheet metadata files
+*.xlsx
+*.xls
+*.csv
+**/*.xlsx
+**/*.xls
 
 # Sample mapping and metadata files
 *Sample_Names*.txt
@@ -8,11 +22,15 @@ NAG_Zip_Files/
 *Sample_Name*.txt
 *sample_name*.txt
 KSM2026-GYT_Sample_Names.txt
+**/*Sample_Names*.txt
+**/*sample_names*.txt
 
 # Notes and meeting documentation
 Meeting_Notes*
 *Notes*.txt
 *notes*.txt
+**/*Notes*.txt
+**/*notes*.txt
 
 # Large Genomic / VCF Data and Indices
 *.vcf
@@ -21,10 +39,18 @@ Meeting_Notes*
 *.vcf.gz.tbi
 *.csi
 *.tbi
+**/*.vcf
+**/*.vcf.gz
+**/*.vcf.gz.csi
+**/*.vcf.gz.tbi
+**/*.csi
+**/*.tbi
 
 # SLURM execution logs
 *.out
 *.err
+**/*.out
+**/*.err
 agriseq_merge_*.out
 agriseq_merge_*.err
 detasseled_*.out
@@ -33,19 +59,25 @@ detasseled_*.err
 # General log files
 *.log
 pipeline.log
+subset_and_sort.log
+**/*.log
 
 # Temporary directories and files
 temp_*
 Processed_Ready_VCFs/
 temp_unzipped_vcfs/
 temp_batch_merges/
+**/temp_*
 
 # Python cache
 __pycache__/
 *.py[cod]
 *$py.class
+**/__pycache__/
 
 # OS / Environment metadata
+desktop.ini
+**/desktop.ini
 .DS_Store
 .DS_Store?
 ._*

@@ -1,0 +1,10 @@
+Sample_A01_Plate1	LINE_001
+Sample_B01_Plate1	LINE_002
+Sample_C01_Plate1	LINE_003
+Sample_D01_Plate1	LINE_004
+Sample_E01_Plate1	LINE_005
+Sample_F01_Plate1	LINE_006
+Sample_G01_Plate1	LINE_007
+Sample_H01_Plate1	LINE_008
+Sample_A02_Plate1	LINE_009
+Sample_B02_Plate1	LINE_010
