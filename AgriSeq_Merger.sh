@@ -75,8 +75,8 @@ function show_help {
     # Print the REQUIREMENTS header
     echo "REQUIREMENTS:"
     
-    # Print the conda requirement description
-    echo "  Must be run within a conda environment containing 'bcftools', 'htslib', and 'python'."
+    # Print the environment requirement description
+    echo "  Must be run within an environment containing 'bcftools', 'htslib', and 'python' (via Conda or module load)."
     
     # Print the final border line
     echo "================================================================================"
@@ -282,7 +282,7 @@ fi
 if ! command -v bcftools &> /dev/null; then
     
     # Print an error message
-    echo "Error: 'bcftools' is not available. Please activate your conda environment."
+    echo "Error: 'bcftools' is not available. Please activate your conda environment or load the module (module load bcftools)."
     
     # Exit the script with an error code
     exit 1
@@ -294,7 +294,7 @@ fi
 if ! command -v bgzip &> /dev/null; then
     
     # Print an error message
-    echo "Error: 'bgzip' is not available. Please activate your conda environment."
+    echo "Error: 'bgzip' is not available. Please activate your conda environment or load the module (module load htslib)."
     
     # Exit the script with an error code
     exit 1

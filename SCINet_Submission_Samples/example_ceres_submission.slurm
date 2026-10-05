@@ -16,11 +16,22 @@
 echo "Job started on $(hostname) at $(date)"
 
 # Determine repository root directory
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# (When run via sbatch, SLURM_SUBMIT_DIR preserves the directory where sbatch was called)
+if [ -n "$SLURM_SUBMIT_DIR" ]; then
+    REPO_DIR="$SLURM_SUBMIT_DIR"
+else
+    REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
 
-# Source Conda from the default user Miniconda installation
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate agriseq_vcf_env
+# Environment Configuration (Choose Method 1 or Method 2):
+# Method 1 (Recommended on Ceres): Use pre-installed cluster modules
+module purge
+module load bcftools
+module load htslib
+
+# Method 2 (Alternative): Activate custom Conda environment on Ceres
+# module load miniconda3
+# conda activate agriseq_vcf_env
 
 # Define input parameters (should be realpath of any input files)
 ZIP_DIR="raw_zip_files"

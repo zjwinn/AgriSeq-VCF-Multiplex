@@ -50,13 +50,39 @@ AgriSeq-VCF-Multiplex/
 
 The pipeline requires `bcftools` (>=1.15), `htslib` (>=1.15), and `python` (>=3.8).
 
-### 1. Build and Activate Conda Environment
+Depending on your computing platform, choose either **Environment Modules** (recommended on HPC clusters like Ceres) or **Conda** (recommended for cross-system portability).
+
+### Option A: Environment Modules (Recommended on USDA SCINet Ceres)
+
+Ceres provides pre-compiled, optimized modules for all required tools. Using modules avoids Conda overhead, avoids disk quota consumption in your home directory, and requires zero installation:
 
 ```bash
-# Clone repository
-git clone https://github.com/zjwinn/AgriSeq-VCF-Multiplex.git
-cd AgriSeq-VCF-Multiplex
+# Clear any conflicting modules and load required tools
+module purge
+module load bcftools
+module load htslib
+```
 
+### Option B: Conda Environment (Cross-Platform Stability)
+
+Conda isolates package versions and system libraries, ensuring identical behavior across disparate workstations, servers, and HPC systems.
+
+#### 1. On USDA SCINet Ceres:
+SCINet maintains a central Miniconda module. **Do not run `conda init`** on Ceres (as recommended by SCINet documentation):
+
+```bash
+# Load Ceres Miniconda module
+module load miniconda3
+
+# Create environment from repo specification
+conda env create -f agriseq_vcf_env.yml
+
+# Activate environment
+conda activate agriseq_vcf_env
+```
+
+#### 2. On Local Workstations or Other Linux Systems:
+```bash
 # Create environment from specification
 conda env create -f agriseq_vcf_env.yml
 
@@ -64,8 +90,7 @@ conda env create -f agriseq_vcf_env.yml
 conda activate agriseq_vcf_env
 ```
 
-### 2. Manual Environment Creation (Alternative)
-
+#### 3. Manual Conda Creation (Alternative):
 ```bash
 conda create -n agriseq_vcf_env -c bioconda -c conda-forge bcftools htslib python -y
 conda activate agriseq_vcf_env
