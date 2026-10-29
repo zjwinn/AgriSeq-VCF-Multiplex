@@ -14,7 +14,8 @@ A suite of shell and Python scripts for standardizing, merging, subsetting, and 
 - **Marker ID Deduplication:** Optional `-d` flag removes concatenated redundant marker IDs from merged loci, retaining the primary identifier.
 
 ### 2. Non-Destructive Subsetting & Sorting (`AgriSeq_Subset_and_Sort.sh`)
-- **Target Coordinate Subsetting (`-t, --targets`):** Subsets specific target loci using a 3-column manifest (`#CHROM`, `POS`, `ID`) or 1-column marker ID list (e.g., `example_target_manifest.txt`), eliminating off-target amplicon artifacts.
+- **Target Coordinate Subsetting (`-t, --targets`):** Subsets specific target loci using a 3-column manifest (`#CHROM`, `POS`, `ID`, e.g., `example_target_manifest.txt` or `V2Targets_manifest.txt`). Filtering strictly by physical coordinates ensures that only the true intended target variant is selected while cleanly rejecting adjacent amplicon indels and off-target (`_OT_`) artifacts.
+- **Strict Input Sanity Checks:** Enforces exact 3-column format, verifies positive integer coordinates, flags duplicate coordinates, validates target contigs against VCF headers, verifies sample line overlap, prevents file collisions, and validates VCF integrity. Single-column marker ID filtering is explicitly rejected to avoid capturing duplicate indel calls.
 - **Line Subsetting (`-l, --lines`):** Subsets specific lines/cultivars using a single-column text file (e.g., `example_lines_list.txt`).
 - **Complete Metadata & Allele Preservation:** Preserves 100% of reference genome `REF` alleles, all true `ALT` alleles, contig designations, and deep genotype metrics.
 - **TASSEL GUI Compatibility:** Sorts records in strict canonical chromosome order (`Chr1A`..`Chr7D` first, then non-native/alien scaffolds alphabetically) and physical coordinate order, resolving "Position out of order" import exceptions in the TASSEL GUI.
@@ -30,8 +31,9 @@ AgriSeq-VCF-Multiplex/
 ├── AgriSeq_Subset_and_Sort.sh              # Core manifest subsetting and sorting pipeline
 ├── rename_vcf_markers.py                   # Python helper for variant standardization
 ├── agriseq_vcf_env.yml                     # Conda environment definition
-├── example_sample_map.txt                  # Example 2-column sample reheadering map
+├── V2Targets_manifest.txt                  # Canonical 3-column target manifest for AgriSeq v2 panel
 ├── example_target_manifest.txt             # Example 3-column target manifest (#CHROM POS ID)
+├── example_sample_map.txt                  # Example 2-column sample reheadering map
 ├── example_lines_list.txt                  # Example 1-column lines/taxa subset list
 ├── Non_HPC_Submission_Samples/             # Non-HPC execution wrappers
 │   ├── run_example.sh                      # Local wrapper for variant merging
@@ -100,13 +102,13 @@ conda activate agriseq_vcf_env
 
 ## Example File Formats
 
-### 1. Target Manifest (`example_target_manifest.txt`)
-A tab-delimited file with three columns: `#CHROM`, `POS`, and `ID`.
+### 1. Target Coordinate Manifest (`example_target_manifest.txt` / `V2Targets_manifest.txt`)
+A tab-delimited file with three columns: `#CHROM`, `POS`, and `ID`. Subsetting requires physical coordinates (`#CHROM` and `POS`) to selectively capture the designed target variants and reject adjacent amplicon indels that share the target assay's ID.
 
 ```text
 #CHROM	POS	ID
 Chr1A	1169383	CHS21_1A001169383
-Chr1A	4783927	CHS21_1A004783927
+Chr1A	4783958	CHS21_1A004783958
 Chr1B	1237446	CHS21_1B001237446
 Chr1D	45625	CHS21_1D000045625
 TEL10_7E739933655	255	TEL10_7E739933655
@@ -174,7 +176,7 @@ LINE_003
 #### Options:
 - `-i, --input` *(Required)*: Path to input VCF file.
 - `-o, --output` *(Required)*: Path for final sorted output VCF (`.vcf.gz`).
-- `-t, --targets` *(Optional)*: 3-column target manifest (`#CHROM POS ID`) or 1-column marker ID list.
+- `-t, --targets` *(Optional)*: 3-column target manifest (`#CHROM POS ID`, e.g. `V2Targets_manifest.txt`).
 - `-l, --lines` *(Optional)*: Single-column text file of sample line names to subset.
 - `-m, --memory` *(Optional, default: 16g)*: Memory buffer limit for bcftools sorting.
 
