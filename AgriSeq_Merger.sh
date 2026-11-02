@@ -35,6 +35,8 @@ function show_help {
     
     # Print the zip directory flag description
     echo "  -z, --zip-dir        Directory containing the original .zip files."
+    echo "  -i, --input-dir      Directory containing pre-extracted .vcf.gz files (e.g. RAW_VCFs)"
+    echo "                       (Can be used instead of or in addition to -z)."
     
     # Print the reference index flag description
     echo "  -r, --ref-index      Reference index string to prefix markers (e.g., CHS21)."
@@ -87,6 +89,9 @@ function show_help {
 # Initialize the ZIP_DIR variable
 ZIP_DIR=""
 
+# Initialize the INPUT_DIR variable (for unzipped .vcf/.vcf.gz directories)
+INPUT_DIR=""
+
 # Initialize the REF_INDEX variable
 REF_INDEX=""
 
@@ -132,6 +137,18 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             
             # End of zip directory case
+            ;;
+            
+        # If the unzipped directory flag is passed
+        -i|--input-dir|--dir|--vcf-dir)
+            
+            # Assign the next argument to INPUT_DIR
+            INPUT_DIR="$2"
+            
+            # Shift the arguments by 2
+            shift 2
+            
+            # End of input directory case
             ;;
             
         # If the reference index flag is passed
@@ -239,11 +256,16 @@ while [[ "$#" -gt 0 ]]; do
 # End of the argument parsing while loop
 done
 
+# If an input directory was provided instead of a zip directory, use it
+if [ -n "$INPUT_DIR" ] && [ -z "$ZIP_DIR" ]; then
+    ZIP_DIR="$INPUT_DIR"
+fi
+
 # Sanity Check 1: Check if any of the required arguments are empty
 if [ -z "$ZIP_DIR" ] || [ -z "$REF_INDEX" ] || [ -z "$CONTIGS" ] || [ -z "$MERGED_OUTPUT" ]; then
     
     # Print an error indicating missing arguments
-    echo "Error: Missing required arguments."
+    echo "Error: Missing required arguments. Please specify either -z (--zip-dir) or -i (--input-dir), -r, -c, and -o."
     
     # Show the help section to guide the user
     show_help
@@ -336,64 +358,55 @@ TEMP_UNZIP_DIR="$TEMP_DIR/temp_unzipped_vcfs"
 mkdir -p "$TEMP_UNZIP_DIR"
 
 # Print a message for the extraction step
-echo "[2/5] Extracting original .zip files from $ZIP_DIR..."
+echo "[2/5] Staging input VCF files from $ZIP_DIR..."
 
-# Find all zip files and loop through them
-find "$ZIP_DIR" -type f -name "*.zip" | while read -r zip_file; do
-    
-    # Extract the base name of the zip file
-    zip_base=$(basename "$zip_file" .zip)
-    
-    # Create a unique subdirectory for this zip file inside the temp dir
-    mkdir -p "$TEMP_UNZIP_DIR/$zip_base"
-    
-    # Extract the zip file quietly into its unique subdirectory
-    unzip -q -o "$zip_file" -d "$TEMP_UNZIP_DIR/$zip_base"
-    
-# End of the find and unzip loop
-done
+# Check for .zip files and extract them if found
+if [ $(find "$ZIP_DIR" -type f -name "*.zip" | head -n 1 | wc -l) -gt 0 ]; then
+    echo "  -> Found .zip archives. Extracting..."
+    find "$ZIP_DIR" -type f -name "*.zip" | while read -r zip_file; do
+        zip_base=$(basename "$zip_file" .zip)
+        mkdir -p "$TEMP_UNZIP_DIR/$zip_base"
+        unzip -q -o "$zip_file" -d "$TEMP_UNZIP_DIR/$zip_base"
+    done
+fi
+
+# Also check for already unzipped .vcf.gz files in ZIP_DIR
+if [ $(find "$ZIP_DIR" -type f -name "*.vcf.gz" | head -n 1 | wc -l) -gt 0 ]; then
+    echo "  -> Found pre-extracted .vcf.gz files. Linking..."
+    find "$ZIP_DIR" -type f -name "*.vcf.gz" | while read -r vcf_file; do
+        parent_dir=$(basename "$(dirname "$vcf_file")")
+        mkdir -p "$TEMP_UNZIP_DIR/$parent_dir"
+        ln -sf "$(readlink -f "$vcf_file")" "$TEMP_UNZIP_DIR/$parent_dir/$(basename "$vcf_file")"
+    done
+fi
 
 # Print a message for the processing step
 echo "[3/5] Renaming markers, bgzipping, and indexing..."
 
-# Find all extracted vcf.gz files and loop through them
-find "$TEMP_UNZIP_DIR" -type f -name "*.vcf.gz" | while read -r vcf_file; do
-    
-    # Extract the base filename by stripping the path and the .gz extension
+NUM_THREADS=$(nproc 2>/dev/null || echo 4)
+echo "  -> Processing VCFs in parallel using $NUM_THREADS threads..."
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export FINAL_VCF_DIR REF_INDEX CONTIGS NON_NATIVE_PREFIX SCRIPT_DIR PATH
+
+process_vcf_worker() {
+    vcf_file="$1"
     vcf_base=$(basename "$vcf_file" .gz)
-    
-    # Extract the parent directory name (which is the unique zip_base we created)
     parent_dir=$(basename "$(dirname "$vcf_file")")
-    
-    # Create a globally unique base name by combining the zip name and the vcf name
     unique_base="${parent_dir}_${vcf_base}"
     
-    # Determine the directory where this merger script resides
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    
-    # Initialize the python command as a string using the globally unique output name
     PY_CMD="python \"$SCRIPT_DIR/rename_vcf_markers.py\" --input \"$vcf_file\" --output \"$FINAL_VCF_DIR/$unique_base\" --ref-index \"$REF_INDEX\" --ref-contigs \"$CONTIGS\""
-    
-    # Check if a non-native prefix was provided
     if [ -n "$NON_NATIVE_PREFIX" ]; then
-        
-        # Append the non-native prefix flag to the python command
         PY_CMD="$PY_CMD --non-native-prefix \"$NON_NATIVE_PREFIX\""
-        
-    # End of the non-native prefix check
     fi
-    
-    # Run the constructed Python command
-    eval $PY_CMD
-    
-    # Compress the newly created VCF using bgzip
+    eval "$PY_CMD"
     bgzip -f "$FINAL_VCF_DIR/$unique_base"
-    
-    # Create a CSI index for the bgzipped file to support large chromosomes
     bcftools index -f -c "$FINAL_VCF_DIR/$unique_base.gz"
-    
-# End of the VCF processing loop
-done
+}
+export -f process_vcf_worker
+
+# Process all extracted/staged VCFs in parallel
+find -L "$TEMP_UNZIP_DIR" -type f -name "*.vcf.gz" | xargs -P "$NUM_THREADS" -I {} bash -c 'process_vcf_worker "$@"' _ {}
 
 # Print a message for the batch merging step
 echo "[4/5] Batch merging VCFs to avoid open-file limits..."
@@ -444,7 +457,7 @@ for ((i=0; i < TOTAL_FILES; i+=BATCH_SIZE)); do
     echo "  -> Merging batch $BATCH_COUNT of $TOTAL_BATCHES..."
     
     # Run bcftools merge on the list of files to generate the batch output
-    bcftools merge -l "$BATCH_LIST" -O z -o "$BATCH_OUTPUT"
+    bcftools merge --threads 4 -l "$BATCH_LIST" -O z -o "$BATCH_OUTPUT"
     
     # Create a CSI index for the newly created intermediate batch file
     bcftools index -f -c "$BATCH_OUTPUT"
@@ -474,7 +487,7 @@ else
     find "$BATCH_DIR" -type f -name "*.vcf.gz" > "$TEMP_DIR/final_batch_list.txt"
     
     # Run bcftools merge on the intermediate batches to create the final unified VCF
-    bcftools merge -l "$TEMP_DIR/final_batch_list.txt" -O z -o "$MERGED_OUTPUT"
+    bcftools merge --threads 4 -l "$TEMP_DIR/final_batch_list.txt" -O z -o "$MERGED_OUTPUT"
     
     # Create a CSI index for the final merged VCF
     bcftools index -f -c "$MERGED_OUTPUT"
@@ -492,7 +505,7 @@ if [ "$DEDUPLICATE_IDS" = true ]; then
     bcftools view "$MERGED_OUTPUT" | awk -F'\t' -v OFS='\t' '/^#/ {print; next} { split($3, a, ";"); $3 = a[1]; print }' | bgzip -c > "$TEMP_DIR/dedup.vcf.gz"
     
     # Overwrite the merged VCF with the cleaned VCF
-    mv "$TEMP_DIR/dedup.vcf.gz" "$MERGED_OUTPUT"
+    cp -f "$TEMP_DIR/dedup.vcf.gz" "$MERGED_OUTPUT"
     
     # Re-index the cleaned VCF
     bcftools index -f -c "$MERGED_OUTPUT"
@@ -509,14 +522,14 @@ if [ -n "$MAP_FILE" ]; then
     # Extract the actual valid sample IDs that exist inside the merged VCF
     bcftools query -l "$MERGED_OUTPUT" > "$TEMP_DIR/vcf_samples.txt"
     
-    # Use awk to generate a filtered mapping file containing only those samples present in the VCF
-    awk 'FNR==NR { vcf[$1]=1; next } { if ($1 in vcf) print $1, $2 }' "$TEMP_DIR/vcf_samples.txt" "$MAP_FILE" > "$TEMP_DIR/valid_mapping.txt"
+    # Use awk to generate a filtered mapping file containing only those samples present in the VCF (tab-delimited for bcftools reheader)
+    awk -v OFS='\t' 'FNR==NR { vcf[$1]=1; next } { if ($1 in vcf) print $1, $2 }' "$TEMP_DIR/vcf_samples.txt" "$MAP_FILE" > "$TEMP_DIR/valid_mapping.txt"
     
     # Apply the filtered map file to reheader the VCF, outputting to a temporary file
     bcftools reheader -s "$TEMP_DIR/valid_mapping.txt" -o "$TEMP_DIR/reheaded.vcf.gz" "$MERGED_OUTPUT"
     
     # Replace the original merged VCF with the newly reheaded VCF
-    mv "$TEMP_DIR/reheaded.vcf.gz" "$MERGED_OUTPUT"
+    cp -f "$TEMP_DIR/reheaded.vcf.gz" "$MERGED_OUTPUT"
     
     # Re-index the final file with CSI since the content changed
     bcftools index -f -c "$MERGED_OUTPUT"

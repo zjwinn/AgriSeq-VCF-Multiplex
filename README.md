@@ -151,14 +151,15 @@ LINE_003
 ```
 
 #### Options:
-- `-z, --zip-dir` *(Required)*: Directory containing individual `.zip` archives delivered by the sequencing provider.
+- `-z, --zip-dir`: Directory containing individual `.zip` archives delivered by the sequencing provider.
+- `-i, --input-dir`: Directory containing pre-extracted `.vcf.gz` files or plate folders (alternative to `-z`).
 - `-r, --ref-index` *(Required)*: Reference prefix to assign to standardized marker IDs (e.g., `CHS21_OT`).
 - `-c, --contigs` *(Required)*: Comma-separated list of standard reference contigs.
 - `-o, --output` *(Required)*: Output file path for the master merged VCF (`.vcf.gz`).
 - `-b, --batch-size` *(Optional, default: 100)*: Number of VCFs to merge simultaneously per batch.
 - `-m, --map-file` *(Optional)*: Two-column sample ID to line name lookup file for reheadering.
 - `-p, --non-native` *(Optional)*: Prefix string to insert for non-reference contigs.
-- `-d, --dedup` *(Optional)*: Retains only the primary marker ID at multiallelic sites instead of concatenated strings.
+- `-d, --dedup` *(Optional)*: Deduplicate marker IDs (retains only primary marker ID at multiallelic sites instead of concatenated strings).
 
 ---
 
