@@ -305,7 +305,7 @@ def cmd_index_samples(args):
                     ):
                         
                         # Append discovered sample descriptor tuple
-                        discovered.append(("FILE", vcf_path, "", sample_id, line_name))
+                        discovered.append(("FILE", vcf_path, "-", sample_id, line_name))
             
             # Catch exceptions during file processing and emit warning
             except Exception as e:

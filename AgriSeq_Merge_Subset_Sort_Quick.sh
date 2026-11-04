@@ -750,8 +750,8 @@ process_manifest_line() {
 # Export manifest line processor function for subshell access via xargs
 export -f process_manifest_line
 
-# Attach numeric sample line index (NR) as 6th column to preserve order
-awk -F'\t' -v OFS='\t' '{print $0, NR}' "$INDEX_MANIFEST" > "$TEMP_DIR/indexed_manifest.tsv"
+# Attach numeric sample line index (NR) as 6th column to preserve order, ensuring inner_path is never empty
+awk -F'\t' -v OFS='\t' '{inner=($3=="" ? "-" : $3); print $1, $2, inner, $4, $5, NR}' "$INDEX_MANIFEST" > "$TEMP_DIR/indexed_manifest.tsv"
 
 # Execute parallel sample projections across worker threads using newline delimiter
 xargs -d '\n' -P "$NUM_THREADS" -I {} bash -c 'process_manifest_line "$@"' _ {} < "$TEMP_DIR/indexed_manifest.tsv"
