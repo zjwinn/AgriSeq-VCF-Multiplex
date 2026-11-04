@@ -604,27 +604,53 @@ def cmd_project_sample(args):
         # Split sample values string by colons
         sample_val = parts[9].split(":")
 
+        # Check INFO column for Torrent Variant Caller (TVC) hotspot attributes
+        info_str = parts[7]
+        opos = None
+        oref = None
+        oalt = None
+        oid = None
+        if "OPOS=" in info_str:
+            for token in info_str.split(";"):
+                if token.startswith("OPOS="):
+                    try:
+                        opos = int(token[5:])
+                    except ValueError:
+                        pass
+                elif token.startswith("OREF="):
+                    oref = token[5:].upper()
+                elif token.startswith("OALT="):
+                    oalt = token[5:].upper()
+                elif token.startswith("OID="):
+                    oid = token[4:]
+
         # Construct call entry dictionary
         call_entry = {
+            "p": p,
             "vid": vid,
             "ref": ref,
             "alts": alt_s.split(",") if alt_s != "." else [],
             "fmt": fmt,
             "subfields": sample_val,
             "gt": sample_val[0] if sample_val else "./.",
+            "opos": opos,
+            "oref": oref,
+            "oalt": oalt,
+            "oid": oid,
         }
 
-        # Define genomic coordinate key tuple
-        k = (c, p)
+        # Index by nominal coordinate, TVC hotspot OPOS, and minimal trimmed coordinates
+        coords_to_index = {(c, p)}
+        if opos is not None:
+            coords_to_index.add((c, opos))
+        for alt in call_entry["alts"]:
+            tp, tr, ta = trim_minimal(p, ref, alt)
+            coords_to_index.add((c, tp))
 
-        # Initialize list for coordinate key if not present
-        if k not in sample_calls:
-            
-            # Create empty list for coordinate key
-            sample_calls[k] = []
-
-        # Append call entry to coordinate candidates
-        sample_calls[k].append(call_entry)
+        for k in coords_to_index:
+            if k not in sample_calls:
+                sample_calls[k] = []
+            sample_calls[k].append(call_entry)
 
     # Define missing call representation depending on format mode
     missing_call = "./." + ":." * (default_fmt_len - 1) if args.full_format else "./."
@@ -660,12 +686,17 @@ def cmd_project_sample(args):
                 if raw_gt == "0/0":
                     
                     # Verify reference allele matches target
-                    if cand_ref == t_ref or trim_minimal(p, cand_ref, t_ref)[1] == t_ref:
-                        
-                        # Set target match to homozygous reference
+                    if cand_ref == t_ref or cand.get("oref") == t_ref:
                         target_match = ("0/0", cand)
-                        
-                        # Break candidate loop
+                        break
+                    if cand["p"] < p and cand_ref[p - cand["p"]:].startswith(t_ref):
+                        target_match = ("0/0", cand)
+                        break
+                    if alts and trim_minimal(cand["p"], cand_ref, alts[0])[1] == t_ref:
+                        target_match = ("0/0", cand)
+                        break
+                    if trim_minimal(p, cand_ref, t_ref)[1] == t_ref:
+                        target_match = ("0/0", cand)
                         break
 
                 # Check if call is uncalled or missing
@@ -673,8 +704,6 @@ def cmd_project_sample(args):
                     
                     # Set target match to missing
                     target_match = ("./.", cand)
-                    
-                    # Break candidate loop
                     break
 
                 # Handle alternate allele calls
@@ -685,24 +714,31 @@ def cmd_project_sample(args):
                         
                         # Check for exact string match with target alleles
                         if cand_ref == t_ref and alt == t_alt:
-                            
-                            # Set target match to designated alternate index
                             target_match = (f"ALT_{alt_idx}", cand)
-                            
-                            # Break alternate loop
                             break
                         
                         # Apply minimal parsimony trimming to candidate alleles
-                        tp, tr, ta = trim_minimal(p, cand_ref, alt)
-                        
-                        # Check if trimmed alleles match target alleles exactly
+                        tp, tr, ta = trim_minimal(cand["p"], cand_ref, alt)
                         if tp == p and tr == t_ref and ta == t_alt:
-                            
-                            # Set target match to designated alternate index
                             target_match = (f"ALT_{alt_idx}", cand)
-                            
-                            # Break alternate loop
                             break
+
+                        # Check if TVC hotspot attributes match canonical target
+                        if cand.get("opos") == p and cand.get("oref") == t_ref and cand.get("oalt") == t_alt:
+                            target_match = (f"ALT_{alt_idx}", cand)
+                            break
+
+                        # Check 5'-anchored block match (TVC MNP / indel anchor trimming)
+                        if cand["p"] < p and (cand["p"] + len(cand_ref) - 1) >= p:
+                            offset = p - cand["p"]
+                            prefix = cand_ref[:offset]
+                            rem_ref = cand_ref[offset:]
+                            if rem_ref.startswith(t_ref):
+                                suffix = rem_ref[len(t_ref):]
+                                expected_alt = prefix + t_alt + suffix
+                                if alt == expected_alt:
+                                    target_match = (f"ALT_{alt_idx}", cand)
+                                    break
 
                     # Break candidate loop if a match was found
                     if target_match:
