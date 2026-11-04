@@ -20,7 +20,7 @@ function show_help {
     echo "USAGE:"
     
     # Print the general command structure
-    echo "  ./AgriSeq_Subset_and_Sort.sh -i <input_vcf> -o <output_vcf> [-t <targets_file>] [-l <lines_file>] [-m <memory>]"
+    echo "  ./AgriSeq_Subset_and_Sort.sh -i <input_vcf> -o <output_vcf> [-t <targets_file>] [-b] [-l <lines_file>] [-m <memory>]"
     
     # Print a blank line
     echo ""
@@ -29,24 +29,47 @@ function show_help {
     echo "OPTIONS:"
     
     # Print the help flag description
-    echo "  -h, --help           Show this help message and exit."
+    echo "  -h, --help               Show this help message and exit."
     
     # Print the input VCF flag description
-    echo "  -i, --input          (Required) Path to input VCF file (.vcf or .vcf.gz)."
+    echo "  -i, --input              (Required) Path to input VCF file (.vcf or .vcf.gz)."
     
     # Print the output VCF flag description
-    echo "  -o, --output         (Required) Path for final output VCF file (.vcf.gz or .vcf)."
+    echo "  -o, --output             (Required) Path for final output VCF file (.vcf.gz or .vcf)."
     
     # Print the targets list flag description
-    echo "  -t, --targets        (Optional) Target manifest with EXACTLY 3 columns (#CHROM POS ID)."
-    echo "                       (e.g. V2Targets_manifest.txt or example_target_manifest.txt)."
-    echo "                       Single-column ID lists are disallowed due to amplicon indels."
+    echo "  -t, --targets            (Optional) Tab-delimited target manifest dynamically inspected for"
+    echo "                           required columns (#CHROM POS ID by default; #CHROM POS ID REF ALT"
+    echo "                           when -b/--biallelic-targets is enabled). Single-column ID lists"
+    echo "                           are disallowed due to off-target amplicon indels."
+    echo "                           (e.g. target_manifests/Wheat_AgSeqv2_Targets_Manifest.txt or"
+    echo "                           example_inputs/example_target_manifest.txt)."
+    
+    # Print the biallelic standardization flag description
+    echo "  -b, --biallelic-targets  (Optional) Enforce strict canonical biallelic REF and ALT alleles"
+    echo "                           defined in the target manifest (--targets required). Trims merge-padded"
+    echo "                           REF/ALT windows, strips off-target secondary alleles, slices Number=A/R/G"
+    echo "                           FORMAT/INFO fields to the target ALT, masks sample genotypes carrying"
+    echo "                           off-target alleles completely to ./., and writes a companion QC TSV"
+    echo "                           (<output_prefix>_biallelic_qc.tsv) for T3/Breedbase, GWAS, and GS."
     
     # Print the lines list flag description
-    echo "  -l, --lines          (Optional) Single-column text file of line/taxa names (e.g. example_lines_list.txt)."
+    echo "  -l, --lines              (Optional) Single-column text file of line/taxa names"
+    echo "                           (e.g. example_inputs/example_lines_list.txt)."
     
     # Print the memory flag description
-    echo "  -m, --memory         (Optional) Memory limit for bcftools sorting buffer (default: 16g)."
+    echo "  -m, --memory             (Optional) Memory limit for bcftools sorting buffer (default: 16g)."
+    
+    # Print a blank line
+    echo ""
+    
+    # Print the PYTHON SCRIPT USAGE header
+    echo "PYTHON SCRIPT USAGE (standardize_biallelic_targets.py):"
+    
+    # Print explanation for internal and standalone python helper execution
+    echo "  When -t/--targets is provided, the pipeline calls python_bin/standardize_biallelic_targets.py"
+    echo "  to verify coordinate + marker ID pairing (and enforce biallelic REF/ALT when -b is passed)."
+    echo "  View standalone options with: python python_bin/standardize_biallelic_targets.py -h"
     
     # Print a blank line
     echo ""
@@ -54,12 +77,11 @@ function show_help {
     # Print the DETAILS header
     echo "PIPELINE DETAILS & INTEGRITY CHECKS:"
     
-    # Print description of strict manifest validation
-    echo "  1. Strict 3-Column Manifest Validation: Enforces exact 3-column (#CHROM POS ID)"
-    echo "     format, verifies positive integer coordinates, flags duplicate positions,"
-    echo "     and validates target contigs against the reference VCF header. Single-column"
-    echo "     marker ID filtering is prohibited because Thermo Fisher TVC VCFs often report"
-    echo "     adjacent indels within the amplicon using the same marker ID as the target SNP."
+    # Print description of dynamic manifest validation
+    echo "  1. Dynamic Manifest & Coordinate+ID Validation: Dynamically inspects TSV column headers"
+    echo "     (#CHROM, POS, ID, and REF/ALT when -b is active), verifies positive integer coordinates,"
+    echo "     validates contigs against the VCF header, and enforces both coordinate and marker ID"
+    echo "     pairing to reject adjacent off-target amplicon indels."
     
     # Print description of sample filtering
     echo "  2. Sample Line Validation: Validates single-column line files, collapses duplicate"
@@ -69,9 +91,10 @@ function show_help {
     echo "  3. Genomic Ordering: Sorts records in strict physical coordinate order with"
     echo "     natural contig sequencing so VCFs open cleanly in the TASSEL GUI."
     
-    # Print description of preservation
-    echo "  4. Complete Metadata Preservation: Preserves 100% of headers, contig names"
-    echo "     (e.g. Chr1A, TEL10_7E...), REF alleles, ALT alleles, and FORMAT/INFO tags."
+    # Print description of preservation vs biallelic standardization
+    echo "  4. Non-Destructive Default vs. Strict Biallelic Mode (-b): Preserves 100% of multiallelic"
+    echo "     calls and headers by default, or standardizes loci strictly to canonical target REF/ALT"
+    echo "     alleles (masking off-target calls to ./.) when -b/--biallelic-targets is specified."
     
     # Print a blank line
     echo ""
@@ -80,7 +103,7 @@ function show_help {
     echo "REQUIREMENTS:"
     
     # Print the environment requirement description
-    echo "  Must be run within an environment containing 'bcftools' and 'htslib' (via Conda or module load)."
+    echo "  Must be run within an environment containing 'bcftools', 'htslib', and 'python' (via Conda or module load)."
     
     # Print the final border line
     echo "================================================================================"
@@ -102,6 +125,12 @@ LINES_FILE=""
 
 # Initialize the SORT_MEMORY variable with a default of 16g
 SORT_MEMORY="16g"
+
+# Initialize the BIALLELIC_TARGETS flag with a default of false (non-destructive mode)
+BIALLELIC_TARGETS=false
+
+# Initialize the companion QC report path variable
+QC_REPORT_FILE=""
 
 # Loop through all command line arguments
 while [[ "$#" -gt 0 ]]; do
@@ -155,6 +184,18 @@ while [[ "$#" -gt 0 ]]; do
             shift 2
             
             # End of targets list case
+            ;;
+            
+        # If the strict biallelic standardization flag is passed
+        -b|--biallelic-targets)
+            
+            # Enable strict biallelic target standardization
+            BIALLELIC_TARGETS=true
+            
+            # Shift the arguments by 1
+            shift 1
+            
+            # End of biallelic targets case
             ;;
             
         # If the lines list flag is passed
@@ -291,7 +332,19 @@ if [ ! -w "$OUTPUT_DIR" ]; then
 # End of output directory write permission check
 fi
 
-# Sanity Check 6: If a targets file is provided, ensure it exists and is non-empty
+# Sanity Check 6: Ensure --biallelic-targets (-b) is accompanied by --targets (-t)
+if [ "$BIALLELIC_TARGETS" = true ] && [ -z "$TARGETS_FILE" ]; then
+    
+    # Print an error message explaining the dependency
+    echo "Error: --biallelic-targets (-b) requires a target manifest (--targets / -t) containing canonical REF and ALT columns."
+    
+    # Exit the script with an error code
+    exit 1
+    
+# End of biallelic flag dependency check
+fi
+
+# Sanity Check 7: If a targets file is provided, ensure it exists, is non-empty, and Python helper is available
 if [ -n "$TARGETS_FILE" ]; then
     
     # Check if target file exists
@@ -316,6 +369,29 @@ if [ -n "$TARGETS_FILE" ]; then
         exit 1
         
     # End of target file empty check
+    fi
+    
+    # Resolve Python interpreter for coordinate + ID verification and biallelic standardization
+    if command -v python3 &> /dev/null; then
+        PYTHON_CMD="python3"
+    elif command -v python &> /dev/null; then
+        PYTHON_CMD="python"
+    else
+        echo "Error: 'python' (or 'python3') is not available. Please activate your conda environment or load python."
+        exit 1
+    fi
+    
+    # Resolve directory containing this script
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    
+    # Locate standardize_biallelic_targets.py helper script (check python_bin/ first, then script root)
+    if [ -f "$SCRIPT_DIR/python_bin/standardize_biallelic_targets.py" ]; then
+        PY_BIALLELIC_SCRIPT="$SCRIPT_DIR/python_bin/standardize_biallelic_targets.py"
+    elif [ -f "$SCRIPT_DIR/standardize_biallelic_targets.py" ]; then
+        PY_BIALLELIC_SCRIPT="$SCRIPT_DIR/standardize_biallelic_targets.py"
+    else
+        echo "Error: standardize_biallelic_targets.py not found in '$SCRIPT_DIR/python_bin' or '$SCRIPT_DIR'."
+        exit 1
     fi
     
 # End of targets file parameter check
@@ -407,6 +483,7 @@ echo " Date:          $(date)"
 echo " Input VCF:     $INPUT_VCF"
 echo " Output VCF:    $OUTPUT_VCF"
 echo " Targets File:  ${TARGETS_FILE:-None (keeping all loci)}"
+echo " Biallelic Mode:$BIALLELIC_TARGETS"
 echo " Lines File:    ${LINES_FILE:-None (keeping all sample lines)}"
 echo " Sort Memory:   $SORT_MEMORY"
 echo " Temp Directory:$TEMP_DIR"
@@ -421,20 +498,150 @@ FILTER_OPTS=()
 # Check if a targets file was provided
 if [ -n "$TARGETS_FILE" ]; then
     
-    # Clean targets file into a temporary list stripping Windows carriage returns and empty lines
-    grep -ve '^\s*$' "$TARGETS_FILE" | tr -d '\r' > "$TEMP_DIR/cleaned_targets.txt"
+    # Clean targets file into a temporary list stripping Windows carriage returns, UTF-8 BOM, and empty lines
+    sed '1s/^\xEF\xBB\xBF//' "$TARGETS_FILE" | tr -d '\r' | grep -ve '^\s*$' > "$TEMP_DIR/cleaned_targets.txt" || true
     
-    # Count total non-comment data lines in targets file
-    TARGET_COUNT=$(grep -v '^#' "$TEMP_DIR/cleaned_targets.txt" | wc -l | tr -d ' ')
+    # Strip leading ## metadata comment lines if present
+    awk '!/^##/' "$TEMP_DIR/cleaned_targets.txt" > "$TEMP_DIR/manifest_body.txt"
+    
+    # Ensure at least one non-metadata line exists in the manifest
+    if [ ! -s "$TEMP_DIR/manifest_body.txt" ]; then
+        
+        # Print error message
+        echo "Error: Target manifest '$TARGETS_FILE' contains no header or target records."
+        
+        # Exit with error code
+        exit 1
+        
+    # End of non-empty body check
+    fi
+    
+    # Inspect the first non-metadata row to dynamically detect delimiter and column headers
+    FIRST_MANIFEST_LINE=$(head -n 1 "$TEMP_DIR/manifest_body.txt")
+    
+    # Use strict tab delimiter when tabs are present; otherwise allow general whitespace
+    AWK_FS_ARGS=()
+    if [[ "$FIRST_MANIFEST_LINE" == *$'\t'* ]]; then
+        AWK_FS_ARGS=(-F'\t')
+    fi
+    
+    # Dynamically inspect header presence and resolve 1-based column indices (CHROM, POS, ID, REF, ALT)
+    HEADER_PARSE=$(awk "${AWK_FS_ARGS[@]}" 'NR==1 {
+        has_hdr = ($0 ~ /^#/) ? 1 : 0;
+        chrom_c = 0; pos_c = 0; id_c = 0; ref_c = 0; alt_c = 0;
+        for (i = 1; i <= NF; i++) {
+            col = $i;
+            gsub(/^[ \t#]+|[ \t]+$/, "", col);
+            u = toupper(col);
+            if ((u == "CHROM" || u == "CHR") && chrom_c == 0) chrom_c = i;
+            else if (u == "POS" && pos_c == 0) pos_c = i;
+            else if (u == "ID" && id_c == 0) id_c = i;
+            else if (u == "REF" && ref_c == 0) ref_c = i;
+            else if (u == "ALT" && alt_c == 0) alt_c = i;
+        }
+        if (chrom_c > 0 && pos_c > 0) has_hdr = 1;
+        print has_hdr, NF, chrom_c, pos_c, id_c, ref_c, alt_c;
+        exit;
+    }' "$TEMP_DIR/manifest_body.txt")
+    
+    # Unpack parsed header metadata variables
+    read -r HAS_MANIFEST_HEADER FIRST_NF CHROM_COL POS_COL ID_COL REF_COL ALT_COL <<< "$HEADER_PARSE"
+    
+    # Reject single-column or 2-column marker lists with an informative explanation
+    if [ "$FIRST_NF" -lt 3 ]; then
+        
+        # Print descriptive error banner explaining why coordinate + ID columns are mandatory
+        echo "================================================================================"
+        echo "Error: Target manifest format violation in '$TARGETS_FILE'!"
+        echo "Found $FIRST_NF column(s) on first line: '$FIRST_MANIFEST_LINE'"
+        echo ""
+        echo "The target manifest MUST contain at least 3 tab-delimited columns:"
+        echo "  Default mode   : #CHROM  POS  ID  [REF  ALT ...]"
+        echo "  Biallelic (-b) : #CHROM  POS  ID  REF  ALT"
+        echo ""
+        echo "WHY COORDINATES + ID ARE REQUIRED:"
+        echo "Passing a single-column marker name list is strictly prohibited because"
+        echo "Thermo Fisher TVC VCFs frequently report multiple off-target amplicon indels"
+        echo "at the same locus that share the exact same marker ID as the target SNP."
+        echo "Filtering by both physical coordinates (#CHROM, POS) and ID is mandatory to"
+        echo "isolate the true target variant and reject adjacent amplicon indels."
+        echo ""
+        echo "Example valid manifest lines:"
+        echo "  #CHROM             POS      ID                 REF  ALT"
+        echo "  Chr1A              1169383  CHS21_1A001169383  C    T"
+        echo "  TEL10_7E739933655  255      TEL10_7E739933655  C    T"
+        echo "================================================================================"
+        
+        # Exit with error code
+        exit 1
+        
+    # End of <3 column check
+    fi
+    
+    # Validate required columns based on header presence and biallelic mode (-b)
+    if [ "$HAS_MANIFEST_HEADER" -eq 1 ]; then
+        
+        # Verify #CHROM/CHROM, POS, and ID columns were found in the header
+        if [ "$CHROM_COL" -eq 0 ] || [ "$POS_COL" -eq 0 ] || [ "$ID_COL" -eq 0 ]; then
+            echo "================================================================================"
+            echo "Error: Target manifest '$TARGETS_FILE' is missing required header column(s)!"
+            echo "Detected header: '$FIRST_MANIFEST_LINE'"
+            echo "Required columns: #CHROM (or CHROM), POS, and ID (plus REF and ALT when using -b)."
+            echo "================================================================================"
+            exit 1
+        fi
+        
+        # Verify REF and ALT columns exist when -b/--biallelic-targets is enabled
+        if [ "$BIALLELIC_TARGETS" = true ] && { [ "$REF_COL" -eq 0 ] || [ "$ALT_COL" -eq 0 ]; }; then
+            echo "================================================================================"
+            echo "Error: --biallelic-targets (-b) requires canonical REF and ALT columns in '$TARGETS_FILE'!"
+            echo "Detected header: '$FIRST_MANIFEST_LINE'"
+            echo ""
+            echo "Please provide a 5-column canonical target manifest (#CHROM POS ID REF ALT),"
+            echo "such as target_manifests/Wheat_AgSeqv2_Targets_Manifest.txt, or omit -b to run"
+            echo "default non-destructive coordinate + ID subsetting."
+            echo "================================================================================"
+            exit 1
+        fi
+        
+        # Extract data rows following the header row, skipping any inline # comment lines
+        tail -n +2 "$TEMP_DIR/manifest_body.txt" | awk '!/^#/' > "$TEMP_DIR/manifest_data.txt"
+        
+    else
+        
+        # Headerless manifest fallback: enforce >= 5 columns when -b is active
+        if [ "$BIALLELIC_TARGETS" = true ] && [ "$FIRST_NF" -lt 5 ]; then
+            echo "================================================================================"
+            echo "Error: --biallelic-targets (-b) requires 5 columns (CHROM POS ID REF ALT) in"
+            echo "headerless target manifest '$TARGETS_FILE', but found $FIRST_NF column(s)!"
+            echo "================================================================================"
+            exit 1
+        fi
+        
+        # Assign positional column indices for headerless manifest
+        CHROM_COL=1
+        POS_COL=2
+        ID_COL=3
+        REF_COL=4
+        ALT_COL=5
+        
+        # Extract non-comment data rows
+        awk '!/^#/' "$TEMP_DIR/manifest_body.txt" > "$TEMP_DIR/manifest_data.txt"
+        
+    # End of header vs headerless column resolution
+    fi
+    
+    # Count total non-comment target data rows
+    TARGET_COUNT=$(wc -l < "$TEMP_DIR/manifest_data.txt" | tr -d ' ')
     
     # Sanity Check: Ensure target manifest has at least one valid data row
     if [ "$TARGET_COUNT" -eq 0 ]; then
         
         # Print error message
-        echo "Error: Target manifest '$TARGETS_FILE' contains no data records (only comments or whitespace)."
+        echo "Error: Target manifest '$TARGETS_FILE' contains no target data rows."
         
         # Print guidance hint
-        echo "Please provide a valid target manifest containing '#CHROM POS ID' rows."
+        echo "Please provide a valid target manifest containing '#CHROM POS ID [REF ALT]' rows."
         
         # Exit with error code
         exit 1
@@ -442,66 +649,42 @@ if [ -n "$TARGETS_FILE" ]; then
     # End of target count check
     fi
     
-    # Sanity Check: STRICT 3-COLUMN CHECK
-    # Check if any non-comment line has a column count different from 3
-    INVALID_COL_LINE=$(awk '!/^#/ {if (NF != 3) {print NR, NF, $0; exit}}' "$TEMP_DIR/cleaned_targets.txt")
+    # Determine minimum required column index across every data row
+    MIN_REQ_COLS="$CHROM_COL"
+    for c_idx in "$POS_COL" "$ID_COL"; do
+        if [ "$c_idx" -gt "$MIN_REQ_COLS" ]; then MIN_REQ_COLS="$c_idx"; fi
+    done
+    if [ "$BIALLELIC_TARGETS" = true ]; then
+        for c_idx in "$REF_COL" "$ALT_COL"; do
+            if [ "$c_idx" -gt "$MIN_REQ_COLS" ]; then MIN_REQ_COLS="$c_idx"; fi
+        done
+    fi
     
-    # If a line with a column count other than 3 was detected
+    # Sanity Check: Verify every data row contains at least MIN_REQ_COLS columns
+    INVALID_COL_LINE=$(awk "${AWK_FS_ARGS[@]}" -v min_nf="$MIN_REQ_COLS" '{if (NF < min_nf) {print NR, NF, $0; exit}}' "$TEMP_DIR/manifest_data.txt")
+    
+    # If any data row has fewer columns than required
     if [ -n "$INVALID_COL_LINE" ]; then
-        
-        # Extract the line number of the offending row
         BAD_LINE_NUM=$(echo "$INVALID_COL_LINE" | awk '{print $1}')
-        
-        # Extract the number of columns found on that row
         FOUND_COLS=$(echo "$INVALID_COL_LINE" | awk '{print $2}')
-        
-        # Extract the content of the offending row
         BAD_LINE_TEXT=$(echo "$INVALID_COL_LINE" | cut -d' ' -f3-)
-        
-        # Print descriptive error banner
-        echo "================================================================================"
-        echo "Error: Target manifest format violation in '$TARGETS_FILE'!"
-        echo "Found $FOUND_COLS columns at line $BAD_LINE_NUM: '$BAD_LINE_TEXT'"
-        echo ""
-        echo "The target manifest MUST contain EXACTLY 3 whitespace-separated columns:"
-        echo "  Column 1: #CHROM (Contig or chromosome name, e.g. Chr1A or TEL10_7E739933655)"
-        echo "  Column 2: POS    (1-based integer physical position, e.g. 12345678)"
-        echo "  Column 3: ID     (Target marker identifier, e.g. AX-12345678)"
-        echo ""
-        echo "WHY EXACT 3 COLUMNS ARE REQUIRED:"
-        echo "Passing a single-column marker name list is strictly prohibited because"
-        echo "Thermo Fisher TVC VCFs frequently report multiple off-target amplicon indels"
-        echo "at the same locus that share the exact same marker ID as the target SNP."
-        echo "Filtering strictly by coordinates (#CHROM, POS) is mandatory to isolate"
-        echo "the true target variant and reject adjacent amplicon indels."
-        echo ""
-        echo "Example valid manifest lines:"
-        echo "  #CHROM             POS   ID"
-        echo "  Chr1A              1169383  CHS21_1A001169383"
-        echo "  TEL10_7E739933655  255      TEL10_7E739933655"
-        echo "================================================================================"
-        
-        # Exit with error code
+        echo "Error: Target manifest row $BAD_LINE_NUM in '$TARGETS_FILE' has $FOUND_COLS column(s), but at least $MIN_REQ_COLS are required: '$BAD_LINE_TEXT'"
         exit 1
-        
-    # End of strict 3-column check
     fi
     
     # Sanity Check: POS column must be a positive integer on every data row
-    NON_NUMERIC_POS=$(awk '!/^#/ {if ($2 !~ /^[0-9]+$/ || $2 <= 0) {print NR, $2, $0; exit}}' "$TEMP_DIR/cleaned_targets.txt")
+    NON_NUMERIC_POS=$(awk "${AWK_FS_ARGS[@]}" -v pc="$POS_COL" '{val=$pc; gsub(/^[ \t]+|[ \t]+$/, "", val); if (val !~ /^[0-9]+$/ || val <= 0) {print NR, val; exit}}' "$TEMP_DIR/manifest_data.txt")
     
     # If a non-numeric or non-positive position was detected
     if [ -n "$NON_NUMERIC_POS" ]; then
         
-        # Extract the line number
+        # Extract the data row number and invalid position value
         BAD_POS_LINE=$(echo "$NON_NUMERIC_POS" | awk '{print $1}')
-        
-        # Extract the invalid position value
         BAD_POS_VAL=$(echo "$NON_NUMERIC_POS" | awk '{print $2}')
         
         # Print error message
-        echo "Error: Invalid physical position '$BAD_POS_VAL' at line $BAD_POS_LINE in '$TARGETS_FILE'."
-        echo "Column 2 (POS) must be a positive integer genomic coordinate."
+        echo "Error: Invalid physical position '$BAD_POS_VAL' at data row $BAD_POS_LINE in '$TARGETS_FILE'."
+        echo "Column $POS_COL (POS) must be a positive integer genomic coordinate."
         
         # Exit with error code
         exit 1
@@ -510,7 +693,7 @@ if [ -n "$TARGETS_FILE" ]; then
     fi
     
     # Sanity Check: Detect duplicate (CHROM, POS) coordinates in the manifest
-    DUP_COORDS=$(awk '!/^#/ {print $1, $2}' "$TEMP_DIR/cleaned_targets.txt" | LC_ALL=C sort | uniq -c | awk '$1 > 1 {print $2 ":" $3 " (" $1 " entries)"}')
+    DUP_COORDS=$(awk "${AWK_FS_ARGS[@]}" -v cc="$CHROM_COL" -v pc="$POS_COL" '{c=$cc; p=$pc; gsub(/^[ \t]+|[ \t]+$/, "", c); gsub(/^[ \t]+|[ \t]+$/, "", p); print c, p}' "$TEMP_DIR/manifest_data.txt" | LC_ALL=C sort | uniq -c | awk '$1 > 1 {print $2 ":" $3 " (" $1 " entries)"}')
     
     # If duplicate coordinates exist in the manifest
     if [ -n "$DUP_COORDS" ]; then
@@ -529,14 +712,11 @@ if [ -n "$TARGETS_FILE" ]; then
             echo "       ... and $(($DUP_COUNT - 5)) additional duplicate coordinates."
         fi
         
-        # Explain handling of duplicate coordinates
-        echo "     Bcftools will subset each unique coordinate once."
-        
     # End of duplicate coordinates check
     fi
     
     # Sanity Check: Verify target manifest chromosomes exist in the input VCF header
-    awk '!/^#/ {print $1}' "$TEMP_DIR/cleaned_targets.txt" | LC_ALL=C sort -u > "$TEMP_DIR/manifest_chroms.txt"
+    awk "${AWK_FS_ARGS[@]}" -v cc="$CHROM_COL" '{c=$cc; gsub(/^[ \t]+|[ \t]+$/, "", c); print c}' "$TEMP_DIR/manifest_data.txt" | LC_ALL=C sort -u > "$TEMP_DIR/manifest_chroms.txt"
     TOTAL_MANIFEST_CHROMS=$(wc -l < "$TEMP_DIR/manifest_chroms.txt" | tr -d ' ')
     
     # Extract contig IDs from input VCF header
@@ -586,14 +766,28 @@ if [ -n "$TARGETS_FILE" ]; then
     # End of VCF contig presence check
     fi
     
-    # Print status message confirming validated target manifest
-    echo "  -> Validated 3-column target manifest: $TARGET_COUNT loci across $TOTAL_MANIFEST_CHROMS contigs."
+    # Print status message confirming dynamically validated target manifest
+    if [ "$BIALLELIC_TARGETS" = true ]; then
+        echo "  -> Validated $FIRST_NF-column target manifest (strict biallelic REF/ALT mode): $TARGET_COUNT loci across $TOTAL_MANIFEST_CHROMS contigs."
+    else
+        echo "  -> Validated $FIRST_NF-column target manifest (non-destructive coordinate + ID mode): $TARGET_COUNT loci across $TOTAL_MANIFEST_CHROMS contigs."
+    fi
     
-    # Extract the first two columns (CHROM and POS) as tab-delimited for bcftools -T
-    awk -v OFS='\t' '!/^#/ {print $1, $2}' "$TEMP_DIR/cleaned_targets.txt" > "$TEMP_DIR/target_regions.tsv"
+    # Build 1-based inclusive [POS-1, POS+1] region windows for fast C-level bcftools pre-filtering
+    # (--targets-overlap 1 retains exact coordinates, 5'-anchored blocks spanning POS, and 1-bp repeat shifts
+    #  before standardize_biallelic_targets.py resolves exact coordinate + ID matches)
+    awk "${AWK_FS_ARGS[@]}" -v OFS='\t' -v cc="$CHROM_COL" -v pc="$POS_COL" '{
+        c = $cc; p = $pc;
+        gsub(/^[ \t]+|[ \t]+$/, "", c);
+        gsub(/^[ \t]+|[ \t]+$/, "", p);
+        p_num = p + 0;
+        start_p = (p_num > 1) ? (p_num - 1) : 1;
+        end_p = p_num + 1;
+        print c, start_p, end_p;
+    }' "$TEMP_DIR/manifest_data.txt" > "$TEMP_DIR/target_regions.tsv"
     
-    # Add target coordinate filter flag (-T) and exact start position matching (--targets-overlap 0)
-    FILTER_OPTS+=(-T "$TEMP_DIR/target_regions.tsv" --targets-overlap 0)
+    # Add target region pre-filter flags (-T with overlap mode 1)
+    FILTER_OPTS+=(-T "$TEMP_DIR/target_regions.tsv" --targets-overlap 1)
     
 # End of targets file processing
 fi
@@ -751,6 +945,52 @@ if [ ! -s "$SUBSET_TEMP_VCF" ]; then
 # End of intermediate file check
 fi
 
+# If a target manifest was supplied, verify coordinate + ID pairing (and enforce biallelic REF/ALT when -b is active)
+if [ -n "$TARGETS_FILE" ]; then
+    
+    # Define path for Python-verified/standardized intermediate VCF
+    STANDARDIZED_TEMP_VCF="$TEMP_DIR/standardized_subset.vcf"
+    
+    # Check whether strict canonical biallelic standardization (-b) was requested
+    if [ "$BIALLELIC_TARGETS" = true ]; then
+        
+        # Derive output prefix by stripping .vcf.gz or .vcf extension for the companion QC TSV
+        OUTPUT_PREFIX="${OUTPUT_VCF%.vcf.gz}"
+        OUTPUT_PREFIX="${OUTPUT_PREFIX%.vcf}"
+        QC_REPORT_FILE="${OUTPUT_PREFIX}_biallelic_qc.tsv"
+        
+        # Print status message for strict biallelic standardization
+        echo "  -> Enforcing canonical biallelic REF/ALT alleles and masking off-target calls..."
+        
+        # Execute standardize_biallelic_targets.py in strict biallelic mode
+        "$PYTHON_CMD" "$PY_BIALLELIC_SCRIPT" \
+            --input "$SUBSET_TEMP_VCF" \
+            --output "$STANDARDIZED_TEMP_VCF" \
+            --targets "$TARGETS_FILE" \
+            --biallelic \
+            --qc-output "$QC_REPORT_FILE"
+        
+    else
+        
+        # Print status message for non-destructive coordinate + ID verification
+        echo "  -> Verifying exact coordinate + marker ID pairing against target manifest..."
+        
+        # Execute standardize_biallelic_targets.py in non-destructive coordinate + ID filter mode
+        "$PYTHON_CMD" "$PY_BIALLELIC_SCRIPT" \
+            --input "$SUBSET_TEMP_VCF" \
+            --output "$STANDARDIZED_TEMP_VCF" \
+            --targets "$TARGETS_FILE"
+        
+    # End of biallelic vs non-destructive mode check
+    fi
+    
+    # Compress the verified/standardized VCF back into SUBSET_TEMP_VCF for downstream sorting
+    bgzip -c "$STANDARDIZED_TEMP_VCF" > "$SUBSET_TEMP_VCF"
+    rm -f "$STANDARDIZED_TEMP_VCF"
+    
+# End of target manifest Python verification/standardization step
+fi
+
 # Calculate count of variant records retained in intermediate subset
 SUBSET_VARIANTS=$(bcftools view -H "$SUBSET_TEMP_VCF" 2>/dev/null | wc -l | tr -d ' ' || echo "0")
 
@@ -759,7 +999,7 @@ if [ "$SUBSET_VARIANTS" -eq 0 ]; then
     
     # Print warning message
     echo "  -> Warning: Subsetting retained 0 variant records."
-    echo "     None of the target manifest coordinates were found in '$INPUT_VCF'."
+    echo "     None of the target manifest loci were found in '$INPUT_VCF'."
     
 else
     
@@ -858,6 +1098,7 @@ echo " Pipeline Complete!"
 echo " Final Output File:  $OUTPUT_VCF"
 if [ -f "$OUTPUT_VCF.csi" ]; then echo " CSI Index:          $OUTPUT_VCF.csi"; fi
 if [ -f "$OUTPUT_VCF.tbi" ]; then echo " Tabix Index:        $OUTPUT_VCF.tbi"; fi
+if [ "$BIALLELIC_TARGETS" = true ] && [ -f "$QC_REPORT_FILE" ]; then echo " Biallelic QC File:  $QC_REPORT_FILE"; fi
 echo " Total Output Sites: $TOTAL_SITES"
 echo " Total Output Lines: $TOTAL_SAMPLES"
 echo "================================================================================"

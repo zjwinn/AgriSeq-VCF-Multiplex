@@ -66,10 +66,10 @@ function show_help {
     echo "PYTHON SCRIPT USAGE (rename_vcf_markers.py):"
     
     # Print the explanation that the python script is called internally
-    echo "  The pipeline internally calls rename_vcf_markers.py. You can also run it"
+    echo "  The pipeline internally calls python_bin/rename_vcf_markers.py. You can also run it"
     
     # Print the explanation for viewing python help
-    echo "  independently. View its help section by running: python rename_vcf_markers.py -h"
+    echo "  independently. View its help section by running: python python_bin/rename_vcf_markers.py -h"
     
     # Print a blank line
     echo ""
@@ -387,7 +387,18 @@ NUM_THREADS=$(nproc 2>/dev/null || echo 4)
 echo "  -> Processing VCFs in parallel using $NUM_THREADS threads..."
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export FINAL_VCF_DIR REF_INDEX CONTIGS NON_NATIVE_PREFIX SCRIPT_DIR PATH
+
+# Resolve rename_vcf_markers.py script location (check python_bin/ first, then script root)
+if [ -f "$SCRIPT_DIR/python_bin/rename_vcf_markers.py" ]; then
+    PY_RENAME_SCRIPT="$SCRIPT_DIR/python_bin/rename_vcf_markers.py"
+elif [ -f "$SCRIPT_DIR/rename_vcf_markers.py" ]; then
+    PY_RENAME_SCRIPT="$SCRIPT_DIR/rename_vcf_markers.py"
+else
+    echo "Error: rename_vcf_markers.py not found in '$SCRIPT_DIR/python_bin' or '$SCRIPT_DIR'."
+    exit 1
+fi
+
+export FINAL_VCF_DIR REF_INDEX CONTIGS NON_NATIVE_PREFIX SCRIPT_DIR PY_RENAME_SCRIPT PATH
 
 process_vcf_worker() {
     vcf_file="$1"
@@ -395,7 +406,7 @@ process_vcf_worker() {
     parent_dir=$(basename "$(dirname "$vcf_file")")
     unique_base="${parent_dir}_${vcf_base}"
     
-    PY_CMD="python \"$SCRIPT_DIR/rename_vcf_markers.py\" --input \"$vcf_file\" --output \"$FINAL_VCF_DIR/$unique_base\" --ref-index \"$REF_INDEX\" --ref-contigs \"$CONTIGS\""
+    PY_CMD="python \"$PY_RENAME_SCRIPT\" --input \"$vcf_file\" --output \"$FINAL_VCF_DIR/$unique_base\" --ref-index \"$REF_INDEX\" --ref-contigs \"$CONTIGS\""
     if [ -n "$NON_NATIVE_PREFIX" ]; then
         PY_CMD="$PY_CMD --non-native-prefix \"$NON_NATIVE_PREFIX\""
     fi
@@ -522,8 +533,8 @@ if [ -n "$MAP_FILE" ]; then
     # Extract the actual valid sample IDs that exist inside the merged VCF
     bcftools query -l "$MERGED_OUTPUT" > "$TEMP_DIR/vcf_samples.txt"
     
-    # Use awk to generate a filtered mapping file containing only those samples present in the VCF (tab-delimited for bcftools reheader)
-    awk -v OFS='\t' 'FNR==NR { vcf[$1]=1; next } { if ($1 in vcf) print $1, $2 }' "$TEMP_DIR/vcf_samples.txt" "$MAP_FILE" > "$TEMP_DIR/valid_mapping.txt"
+    # Use awk to generate a filtered mapping file containing only those samples present in the VCF (tab-delimited for bcftools reheader, stripping any Windows CRs)
+    awk -v OFS='\t' '{ sub(/\r$/, "") } FNR==NR { vcf[$1]=1; next } { if ($1 in vcf) print $1, $2 }' "$TEMP_DIR/vcf_samples.txt" "$MAP_FILE" > "$TEMP_DIR/valid_mapping.txt"
     
     # Apply the filtered map file to reheader the VCF, outputting to a temporary file
     bcftools reheader -s "$TEMP_DIR/valid_mapping.txt" -o "$TEMP_DIR/reheaded.vcf.gz" "$MERGED_OUTPUT"

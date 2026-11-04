@@ -1,6 +1,22 @@
-# Auto detect text files and perform LF normalization
+# Auto-detect text files and perform LF normalization in the repository
 * text=auto
 
-# Enforce LF line endings for shell and SLURM scripts on all platforms
+# Enforce LF line endings on all platforms for scripts, configs, and pipeline inputs
+# (Prevents Windows CRLF carriage returns from breaking bash, awk, Python, or bcftools)
 *.sh text eol=lf
 *.slurm text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
+*.tsv text eol=lf
+*.md text eol=lf
+
+# Explicitly mark compressed/binary formats as binary
+*.gz binary
+*.zip binary
+*.csi binary
+*.tbi binary
+*.bcf binary
+*.xlsx binary
+*.xls binary

@@ -21,7 +21,7 @@ echo "Executing AgriSeq_Merger.sh pipeline... (Output is being saved to pipeline
   --contigs "Chr1A,Chr1B,Chr1D,Chr2A,Chr2B,Chr2D,Chr3A,Chr3B,Chr3D,Chr4A,Chr4B,Chr4D,Chr5A,Chr5B,Chr5D,Chr6A,Chr6B,Chr6D,Chr7A,Chr7B,Chr7D" \
   --output "Merged_Dataset.vcf.gz" \
   --batch-size 100 \
-  --map-file "$REPO_DIR/example_sample_map.txt" \
+  --map-file "$REPO_DIR/example_inputs/example_sample_map.txt" \
   --non-native "OT" \
   -d &> pipeline.log
 

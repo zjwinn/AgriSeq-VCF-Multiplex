@@ -16,9 +16,10 @@ conda activate agriseq_vcf_env
 # 2. Define input parameters using public example templates
 INPUT_VCF="Merged_Dataset.vcf.gz"
 OUTPUT_VCF="Subset_Filtered_Sorted.vcf.gz"
-TARGETS_FILE="$REPO_DIR/example_target_manifest.txt"
-LINES_FILE="$REPO_DIR/example_lines_list.txt"
+TARGETS_FILE="$REPO_DIR/target_manifests/Wheat_AgSeqv2_Targets_Manifest.txt" # Or example: $REPO_DIR/example_inputs/example_target_manifest.txt
+LINES_FILE="$REPO_DIR/example_inputs/example_lines_list.txt"
 SORT_MEMORY="16g"
+BIALLELIC_FLAG="-b" # Set to "-b" for strict biallelic REF/ALT compliance (T3/Breedbase, GWAS, GS), or "" for non-destructive mode
 
 # 3. Execute the subsetting and sorting pipeline (again check input names to make sure they are not just generic inputs)
 echo "Executing AgriSeq_Subset_and_Sort.sh pipeline... (Output is being saved to subset_and_sort.log)"
@@ -27,6 +28,7 @@ echo "Executing AgriSeq_Subset_and_Sort.sh pipeline... (Output is being saved to
   --output "$OUTPUT_VCF" \
   --targets "$TARGETS_FILE" \
   --lines "$LINES_FILE" \
-  --memory "$SORT_MEMORY" &> subset_and_sort.log
+  --memory "$SORT_MEMORY" \
+  $BIALLELIC_FLAG &> subset_and_sort.log
 
 echo "Job completed. Log written to subset_and_sort.log"
