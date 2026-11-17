@@ -22,7 +22,7 @@ Targeted amplicon sequencing panels assay predefined genomic loci with known ref
 
 ```bash
 # Clone the repository
-git clone https://github.com/zwwinn/AgriSeq-VCF-Multiplex.git
+git clone https://github.com/zjwinn/AgriSeq-VCF-Multiplex.git
 cd AgriSeq-VCF-Multiplex
 
 # Configure Conda environment (for local execution)
